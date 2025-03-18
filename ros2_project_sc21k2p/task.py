@@ -18,6 +18,7 @@ class colourIdentifier(Node):
     def __init__(self):
         super().__init__('cI')
         self.subscription
+        #
         # Remember to initialise a CvBridge() and set up a subscriber to the image topic you wish to use
         # We covered which topic to subscribe to should you wish to receive image data
 
