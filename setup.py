@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'task = ros2_project_sc21k2p.task:main',
+            'task = ros2_project_sc21k2p.task:main'
         ],
     },
 )
