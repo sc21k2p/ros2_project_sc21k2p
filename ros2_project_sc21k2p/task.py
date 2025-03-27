@@ -1,5 +1,3 @@
-# Exercise 3 - If green object is detected, and above a certain size, then send a message (print or use lab2)
-
 import threading
 import sys, time
 import cv2
@@ -26,7 +24,6 @@ class multiTaskRobot(Node):
         
         self.bridge = CvBridge()
         self.subscription = self.create_subscription(Image, '/camera/image_raw', self.callback, 10)
-        self.laser_subscription = self.create_subscription(LaserScan, '/scan', self.laser_callback, 10)
         self.subscription
         self.sensitivity = 10
         
@@ -41,19 +38,8 @@ class multiTaskRobot(Node):
         
         self.action_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
 
-    def laser_callback(self, msg):
-        position = msg.ranges[0]
-        if position <= 1.00:
-            # self.moveForwardsFlag = False
-            # print("moveForwards deactivated")
-            self.stopFlag = True
-            print("Stop activated")
-            
-
-
     def callback(self, data):
 
-        # Convert the received image into a opencv image
         try:
             image = self.bridge.imgmsg_to_cv2(data, 'bgr8')
         except CvBridgeError:
@@ -63,7 +49,6 @@ class multiTaskRobot(Node):
         
         hsv_green_lower = np.array([60 - self.sensitivity, 100, 100])
         hsv_green_upper = np.array([60 + self.sensitivity, 255, 255])
-        # Convert the rgb image into a hsv image
         
         hsv_blue_lower = np.array([120 - self.sensitivity, 100, 100])
         hsv_blue_upper = np.array([120 + self.sensitivity, 255, 255])
@@ -85,13 +70,9 @@ class multiTaskRobot(Node):
         # Apply the mask to the original image using the cv2.bitwise_and() method
         red_mask = cv2.bitwise_or(red_mask_1, red_mask_2)
         
-        # rg_mask = cv2.bitwise_or(red_mask, blue_mask)
-
-        #Show the resultant images you have created. You can show all of them or just the end result if you wish to.
-        # filtered_image = cv2.bitwise_and(image, image, mask=rg_mask)
-        
-        # Find the contours that appear within the certain colour mask using the cv2.findContours() method
-        
+        # Finding the contours for all three colours
+        # Create a coloured contour around the boxes when identified
+                
         # RED
         red_contours, _ = cv2.findContours(red_mask,mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_SIMPLE)
         
@@ -105,6 +86,8 @@ class multiTaskRobot(Node):
             
             if cv2.contourArea(c) > 1:
                 self.red_identified = True
+                xr,yr,wr,hr = cv2.boundingRect(c)
+                cv2.rectangle(image,(xr,yr),(xr+wr,yr+hr),(255,0, 0),2)
                 print("Red Identified", cv2.contourArea(c))
         
         # GREEN
@@ -120,12 +103,15 @@ class multiTaskRobot(Node):
             
             if cv2.contourArea(c) > 1:
                 self.green_identified = True
+                xg,yg,wg,hg = cv2.boundingRect(c)
+                cv2.rectangle(image,(xg,yg),(xg+wg,yg+hg),(0,0,255),2)
                 print("Green Identified", cv2.contourArea(c))
                 
         # BLUE
         blue_contours, _ = cv2.findContours(blue_mask,mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_SIMPLE)
         
         if len(blue_contours) > 0:
+            self.blue_identified = True
             c = max(blue_contours, key=cv2.contourArea)
             M = cv2.moments(c)
             if M['m00'] != 0:
@@ -133,32 +119,19 @@ class multiTaskRobot(Node):
                 cy = int(M['m01']/M['m00'])
             
             if cv2.contourArea(c) > 1:
-                self.blue_identified = True
+                xb,yb,wb,hb = cv2.boundingRect(c)
+                cv2.rectangle(image,(xb,yb),(xb+wb,yb+hb),(0, 255,0),2)
                 print("Blue Identified", cv2.contourArea(c))
                 
-                self.moveForwardsFlag = True
-                print("moveForwards activated")
-                
-                
-                # if cv2.contourArea(c) > 175000:
-                #     self.moveForwardsFlag = False
-                #     print("moveForwards deactivated")
-                #     self.stopFlag = True
-                #     print("Stop activated")
-                    # self.stop()
-                
-                # elif cv2.contourArea(c) <= 175000:
-                #     self.moveForwardsFlag = True
-                #     print("moveForwards activated")
-                    # self.walk_forward()
-
-                # draw a circle on the contour you're identifying
-                #minEnclosingCircle can find the centre and radius of the largest contour(result from max())
-                # (x, y), radius = cv2.minEnclosingCircle(c)
-
-                # cv2.circle(image,(x, y),radius,colour,thickness)
-  
-                # Then alter the values of any flags
+                # If the robot is not close enough keep moving forward, otherwise stop.
+                if cv2.contourArea(c) < 174000:
+                    self.moveForwardsFlag = True
+                    print("moveForwards activated1")
+                elif cv2.contourArea(c) >= 174000:
+                    self.moveForwardsFlag = False
+                    print("moveForwards deactivated")
+                    self.stopFlag = True
+                    print("Stop activated")
                 
         cv2.namedWindow('camera_Feed',cv2.WINDOW_NORMAL)
         cv2.imshow('camera_Feed', image)
@@ -193,9 +166,7 @@ class multiTaskRobot(Node):
         goal_msg.pose.pose.orientation.w = cos(yaw / 2)
 
         self.action_client.wait_for_server()
-        # self.send_goal_future = self.action_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
         self.send_goal_future = self.action_client.send_goal(goal_msg)
-        # self.send_goal_future.add_done_callback(self.goal_response_callback)
 
     def goal_response_callback(self, future):
         goal_handle = future.result()
@@ -213,27 +184,6 @@ class multiTaskRobot(Node):
 
     def feedback_callback(self, feedback_msg):
         feedback = feedback_msg.feedback
-        # NOTE: if you want, you can use the feedback while the robot is moving.
-        #       uncomment to suit your need.
-
-        ## Access the current pose
-        #current_pose = feedback_msg.feedback.current_pose
-        #position = current_pose.pose.position
-        #orientation = current_pose.pose.orientation
-
-        ## Access other feedback fields
-        #navigation_time = feedback_msg.feedback.navigation_time
-        #distance_remaining = feedback_msg.feedback.distance_remaining
-
-        ## Print or process the feedback data
-        #self.get_logger().info(f'Current Pose: [x: {position.x}, y: {position.y}, z: {position.z}]')
-        #self.get_logger().info(f'Distance Remaining: {distance_remaining}')
-    
-        
-
-
-
-
 
 # Create a node of your class in the main and ensure it stays up and running
 # handling exceptions and such
@@ -252,10 +202,6 @@ def main(args = None):
     signal.signal(signal.SIGINT, signal_handler)
     thread = threading.Thread(target=rclpy.spin, args=(mTR,), daemon=True)
     thread.start()
-    
-      # example coordinates
-    
-    
     
     try:
         while rclpy.ok():
