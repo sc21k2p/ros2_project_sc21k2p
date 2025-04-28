@@ -5,7 +5,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, Vector3
-from sensor_msgs.msg import Image, LaserScan
+from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from rclpy.exceptions import ROSInterruptException
 import signal
@@ -20,13 +20,17 @@ class multiTaskRobot(Node):
     def __init__(self):
         super().__init__('cI')
         
+        # Create Publisher and Rate for movement
         self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.rate = self.create_rate(10)
         
+        # Initialise a CvBridge() and sensitivity and set up a subscriber to the image topic
         self.bridge = CvBridge()
         self.subscription = self.create_subscription(Image, '/camera/image_raw', self.callback, 10)
         self.subscription
         self.sensitivity = 10
         
+        # Initialise Flags
         self.green_identified = False
         self.red_identified = False
         self.blue_identified = False
@@ -34,22 +38,27 @@ class multiTaskRobot(Node):
         self.moveForwardsFlag = False
         self.stopFlag = False
         
-        self.rate = self.create_rate(10)
         
+        # Initialise Client
         self.action_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
 
     def callback(self, data):
 
         try:
+            # Convert the received image into a opencv image
             image = self.bridge.imgmsg_to_cv2(data, 'bgr8')
         except CvBridgeError:
             print("An error has occurred with displaying the image")
         
+        # Convert the rgb image into a hsv image
         hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         
+        # CREATE COLOUR MASKS
+        # green
         hsv_green_lower = np.array([60 - self.sensitivity, 100, 100])
         hsv_green_upper = np.array([60 + self.sensitivity, 255, 255])
         
+        # blue
         hsv_blue_lower = np.array([120 - self.sensitivity, 100, 100])
         hsv_blue_upper = np.array([120 + self.sensitivity, 255, 255])
         
@@ -70,10 +79,9 @@ class multiTaskRobot(Node):
         # Apply the mask to the original image using the cv2.bitwise_and() method
         red_mask = cv2.bitwise_or(red_mask_1, red_mask_2)
         
-        # Finding the contours for all three colours
-        # Create a coloured contour around the boxes when identified
+        # FIND CONTOURS FOR EACH COLOUR
                 
-        # RED
+        # red
         red_contours, _ = cv2.findContours(red_mask,mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_SIMPLE)
         
         if len(red_contours) > 0:
@@ -90,7 +98,7 @@ class multiTaskRobot(Node):
                 cv2.rectangle(image,(xr,yr),(xr+wr,yr+hr),(255,0, 0),2)
                 print("Red Identified", cv2.contourArea(c))
         
-        # GREEN
+        # green
         green_contours, _ = cv2.findContours(green_mask,mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_SIMPLE)
         
         if len(green_contours) > 0:
@@ -107,7 +115,7 @@ class multiTaskRobot(Node):
                 cv2.rectangle(image,(xg,yg),(xg+wg,yg+hg),(0,0,255),2)
                 print("Green Identified", cv2.contourArea(c))
                 
-        # BLUE
+        # blue
         blue_contours, _ = cv2.findContours(blue_mask,mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_SIMPLE)
         
         if len(blue_contours) > 0:
@@ -132,7 +140,8 @@ class multiTaskRobot(Node):
                     print("moveForwards deactivated")
                     self.stopFlag = True
                     print("Stop activated")
-                
+        
+        # Show the resultant images       
         cv2.namedWindow('camera_Feed',cv2.WINDOW_NORMAL)
         cv2.imshow('camera_Feed', image)
         cv2.resizeWindow('camera_Feed',320,240)
